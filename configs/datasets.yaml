@@ -1,0 +1,26 @@
+# Frozen dataset version - bump if example generation logic changes.
+dataset_version: "v1"
+model_id: state-spaces/mamba-130m-hf
+tokenizer_name: state-spaces/mamba-130m-hf
+seed: 0
+n_eval: 128
+n_smoke: 16
+
+ar:
+  n_pairs: 4
+  n_queries: 1
+
+atr_short:
+  n_marks: 1
+  prefix_len: 4
+  gap_len: 2
+
+atr_mid:
+  n_marks: 2
+  prefix_len: 8
+  gap_len: 4
+
+length:
+  n_per_config: 64
+
+factual: true

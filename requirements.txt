@@ -1,0 +1,11 @@
+torch>=2.2.0
+transformers>=4.40.0
+accelerate>=0.30.0
+einops>=0.7.0
+packaging
+ninja
+safetensors
+pyyaml
+numpy
+tqdm
+matplotlib
