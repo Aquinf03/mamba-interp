@@ -74,7 +74,7 @@ def main() -> None:
         f"# Log + split freeze ({today})",
         "",
         "Appendix archive of locked markdown receipts. **Do not regenerate `data/splits/v1/`.**",
-        "Paper numbers: `logs/findings.md`. Draft: `paper/draft.md`.",
+        "Paper numbers: `logs/findings.md`. Draft: `paper/main.tex`.",
         "",
         "Weights (`*.safetensors`) are **not** in git (`runs/` is gitignored). Re-FT seed 1:",
         "",

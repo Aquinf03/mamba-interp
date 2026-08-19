@@ -1,6 +1,6 @@
 # Findings lock (2026-08-18)
 
-Durable record of results that later experiments must **not** overwrite in interpretation. Raw tables live in the log files listed at the end. Smoke runs (`--max-examples 16`) are **not** paper numbers. What to run next: venue tex if you want a PDF. Paper draft: `paper/draft.md`. Figures: `figs/`. Freeze: `logs/LOCK.md`. Demo (not paper n): `python scripts\run_demo.py`.
+Durable record of results that later experiments must **not** overwrite in interpretation. Raw tables live in the log files listed at the end. Smoke runs (`--max-examples 16`) are **not** paper numbers. What to run next: venue tex if you want a PDF. Paper: `paper/main.tex`. Figures: `paper/figures/`. Freeze: `logs/LOCK.md`. Demo (not paper n): `python scripts\run_demo.py`.
 
 **Claim to keep:** When AR-finetuned `mamba-130m-hf` does associative recall / ATR, the bind is stored in **layer 17 recurrent state \(h\) during write**. Residual-matched noise misses it. Linear probes at the query token are **readout**, not store. Padding overwrites that state; stuffing is a different failure.
 

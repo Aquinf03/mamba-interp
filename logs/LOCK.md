@@ -1,7 +1,7 @@
 # Log + split freeze (2026-08-19)
 
 Appendix archive of locked markdown receipts. **Do not regenerate `data/splits/v1/`.**
-Paper numbers: `logs/findings.md`. Draft: `paper/draft.md`.
+Paper numbers: `logs/findings.md`. Draft: `paper/main.tex`.
 
 Weights (`*.safetensors`) are **not** in git (`runs/` is gitignored). Re-FT seed 1:
 
@@ -57,7 +57,7 @@ Suggested git tag after committing this freeze: `workshop-draft-2026-08-19`.
 | `471677f120c2e425233566a26084bd1177e426f1b56fa80f4443cd1a656b823c` | `logs/failure_pad_only.md` |
 | `275d71a0cfce189e007cfb782642c0c99acbd2f42ecf17c7ababd176fbf754da` | `logs/failure_s2.md` |
 | `3d0b6eca3fa078dd9a02cf710ac582f86a8e09542ff79b64574319059faeae04` | `logs/failure_s3.md` |
-| `4fa4df72ee6d96bf1a89619926e21d1b650b101847feb3d0054f91838a8f92e3` | `logs/findings.md` |
+| `510a4c81c0db2479dabdc2d6123b5c1a26f4b241777ad10d81a128626e467e66` | `logs/findings.md` |
 | `c67917e95aa7d50068f3a660db5169d8d0773fc7ad08bed4d382e0b7312a21fb` | `logs/intervene.md` |
 | `458ce1147c9a7e57843290741ab83209e31b01149f89bf257a339135d8506bf7` | `logs/intervene_ar.md` |
 | `35309d08d1374f399a1faf4a59fea18c03199bc430d6254bb641433e332d9411` | `logs/intervene_atr_mid.md` |

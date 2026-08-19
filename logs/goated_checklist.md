@@ -27,7 +27,7 @@ Locked results: `logs/findings.md`. New runs → **new log filenames**. Hardware
 ## Writing (required for “extremely good”)
 
 - [x] **One sentence in the abstract** + limitations in the abstract (130M, synthetic, finetuned, pad magnitude seed-sensitive, swap does not copy). `paper/draft.md`.
-- [x] **Five figures:** (1) write–store–read, (2) L17 vs other layers, (3) wipe vs residual vs restore + ATR, (4) probes over \(t\), (5) pad recovery vs stuffing collapse (three seeds, sign). `figs/`, `scripts/make_figs.py`.
+- [x] **Five figures:** (1) write–store–read, (2) L17 vs other layers, (3) wipe vs residual vs restore + ATR, (4) probes over \(t\), (5) pad recovery vs stuffing collapse (three seeds, sign). `paper/figures/`, `scripts/make_figs.py`.
 - [x] **Do not title C1** “\(h\) beats residual.” Title: store ≠ readout. Draft §4.
 - [x] **Swap subsection:** necessity, not copy (donor_acc 0.072). Draft §7.
 - [x] Cite Hidden Attention, IOI-in-Mamba, Lost in State Space, Primacy–Recency, subspace bottlenecks, Stuffed/LongMamba - as neighbors. Draft §11.
@@ -44,7 +44,7 @@ Remaining: venue tex polish if you want a submission PDF. G is done (`README.md`
 
 | If you have | Venue |
 |---|---|
-| Current `findings.md` + `paper/draft.md` + `figs/` | **Strong workshop / oral-plausible** |
+| Current `findings.md` + `paper/main.tex` + `paper/figures/` | **Strong workshop / oral-plausible** |
 | + a **pretrained-competent** natural task with the same L17 story | Main-track plausible |
 | 370M zero-shot on these synthetics | **Done, 0%** - does not unlock main track |
 | SAE/IOI zoo without the above | Worse paper |

@@ -1,0 +1,556 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+\graphicspath{{figures/}}
+
+\begin{document}
+
+\thispagestyle{empty}
+\vspace*{0.5cm}
+
+\noindent\rule{\textwidth}{2pt}
+
+\vspace{0.45cm}
+\begin{center}
+  {\LARGE\bfseries Locating Recall in Mamba State}
+\end{center}
+\vspace{0.35cm}
+
+\noindent\rule{\textwidth}{0.8pt}
+
+\vspace{0.6cm}
+
+\begin{center}
+\begin{minipage}[t]{0.3\textwidth}
+\centering
+{\bfseries Ash Manvi}\par
+Aquin Labs\par
+{\ttfamily ash@aquin.app}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.3\textwidth}
+\centering
+{\bfseries Samreena Tajreen}\par
+Aquin Labs\par
+{\ttfamily samreena@aquin.app}
+\end{minipage}
+\end{center}
+
+\vspace{0.55cm}
+
+\begin{center}
+  {\Large\bfseries Abstract}
+\end{center}
+
+\begin{quote}
+When AR-finetuned Mamba-130M does associative recall, the bind lives in
+layer-17 recurrent state $\mathbf{h}$, not in the residual bus.
+Zeroing that state on write collapses accuracy (AR $0.961 \to 0.297$ at
+L17 alone; late-block wipe $0.242$).
+Copying this example's L17 $\mathbf{h}$ restores $0.961$; copying the
+L17 residual at the same sites stays at wipe.
+Residual-matched write noise, budgeted to the mixer $\ell_2$ of the wipe
+(write mean $29.6$), does nothing ($0.961$).
+Linear probes and a small MLP find no value code at end-of-list;
+residual probes win at the query because that is readout, not store.
+Padding overwrites the store: a $\Delta \leftarrow 0$ clamp on pads helps
+in sign across three seeds ($+0.08$ to $+0.27$).
+Stuffing is a different failure (the same clamp hurts).
+Swap of $\mathbf{h}$ breaks recall but does not copy the donor value
+(donor accuracy $0.072$).
+The code is distributed across $N=16$ and SVD rank; it is not a portable
+key-value slot.
+Limitations: 130M only; synthetic AR/ATR; the store is a task-finetune
+algorithm (pretrained 130M and 370M are both $0\%$ on these splits);
+pad magnitude is seed-sensitive. We run the unfused sequential scan.
+\end{quote}
+
+\section{Introduction}
+
+Mamba stores context in a recurrent state $\mathbf{h}_t$, not in a
+token-token attention matrix \cite{gu2023}:
+\begin{equation}
+  \mathbf{h}_t = \bar{\mathbf{A}}_t \mathbf{h}_{t-1} + \bar{\mathbf{B}}_t \mathbf{u}_t,
+  \qquad
+  \mathbf{y}_t = \mathbf{C}_t \mathbf{h}_t + D \cdot \mathbf{u}_t.
+\end{equation}
+Interpretability work on Mamba has mostly read it as a transformer:
+implicit attention \cite{ali2025}, token maps \cite{pitorro2025}, residual
+tracing and ROME-style edits \cite{sharma2024}, IOI circuits
+\cite{ensign2024}.
+Those are useful neighbors. They do not locate a bind inside $\mathbf{h}$.
+
+A companion result is that \emph{pretrained} Mamba-130M raw state is
+severely anisotropic and linearly uninformative as a frozen encoder
+\cite{wagh2026}.
+That is a null about frozen geometry.
+It leaves open a different question: when the same backbone is made
+competent at a memory task, where does the algorithm put the bind, and is
+that object the residual bus?
+
+We full-finetune \texttt{state-spaces/mamba-130m-hf} on synthetic
+associative recall until eval AR is $0.961$, then intervene on
+$\mathbf{h}$, $\mathbf{B}$, $\mathbf{C}$, $\Delta$, and the residual at
+named token windows, with residual-matched noise as a control.
+Held-out eval uses $n=128$ for AR/ATR and $n=64$ for length.
+Two additional finetune seeds replicate the L17 wipe and the pad/stuff
+sign.
+
+The bind is not ``late residual'' and not ``all 24 layers.''
+Write-zeroing $\mathbf{h}$ one layer at a time leaves almost every layer
+at clean ($\approx 0.96$).
+Only layer 17 collapses ($0.297$).
+Putting this sequence's L17 $\mathbf{h}$ back after a late wipe fully
+restores AR; putting L16 or L18 $\mathbf{h}$, or the actual L17 residual
+skip, does not.
+Probes at the query are readout.
+We do not claim that pretrained Mamba already solves AR, that
+$\mathbf{h}$ linearly beats residual at the query, or that $N$-slots are
+a content-addressable cache.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig1_write_store_read.png}
+  \caption{Write / store / read. Write ($\mathbf{B},\Delta$) puts a bind
+  into $\mathbf{h}$; layer-17 $\mathbf{h}$ holds it; $\mathbf{C}$ reads
+  at the query. Copying L17 $\mathbf{h}$ restores AR; copying the residual
+  does not.}
+  \label{fig:overview}
+\end{figure}
+
+\section{Setup}
+
+\subsection{Model}
+Base: \texttt{state-spaces/mamba-130m-hf} (24 layers, $d=768$, $E=1536$,
+$N=16$).
+Paper checkpoint: full FT, 800 steps, 2048 AR train, seed 1, lr
+$3\times 10^{-4}$, AMP fp16 with FP32 master weights, eval AR $0.961$
+(peak 2.66\,GB, 312\,s on an RTX 4070 Laptop, 8\,GB).
+Hooks use the unfused sequential scan (no fused CUDA scan).
+Pretrained 130M and pretrained 370M are both $0\%$ next-token AR, ATR,
+length, and factual on the frozen splits.
+All causal claims below are on the finetuned 130M checkpoint unless
+labeled otherwise.
+Replication runs (seeds 2 and 3) are not the paper checkpoint.
+
+\subsection{Tasks}
+\textbf{AR.} A list of key-value symbol pairs, then a query key; the
+target is the bound value (4 pairs by default).
+Symbols are single tokens under the GPT-NeoX tokenizer.
+\textbf{ATR.} Associative treecall / induction:
+$\ldots A\, B \ldots A \to B$ (short: 1 mark; mid: 2).
+\textbf{Length.} In-range lists, OOD pad (32 tokens before the query),
+and filler stuffing between pairs.
+\textbf{Multi-query.} 4 pairs, 2 queries, on a separate held-out split.
+\textbf{Factual.} Short subject-object prompts; diagnostic only.
+
+Accuracy is greedy next-token match on the target id.
+Confidence intervals are bootstrap over examples.
+
+\subsection{Interventions}
+Unless named, write-window ops hit late layers 16 to 23.
+A state wipe zeros recurrent $\mathbf{h}$ on the window.
+A restore pastes this example's clean L17 vector after a late wipe, at
+last write, value, or query.
+Residual-matched noise adds a random residual vector whose $\ell_2$
+matches the mixer-output change from the write-window state wipe on the
+same example.
+A local-only run kills SSM recurrence and leaves conv $+\,D\cdot u$.
+
+\section{Behavior after finetune}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Split & Acc. & Mean LP \\
+\midrule
+AR & $0.961$ & $-0.153$ \\
+ATR-short & $0.961$ & $-0.268$ \\
+ATR-mid & $0.844$ & $-0.712$ \\
+len-short & $1.000$ & $-0.004$ \\
+len-mid & $0.922$ & $-0.338$ \\
+len-OOD-pad & $0.484$ & $-2.740$ \\
+stuff-light & $0.922$ & $-0.519$ \\
+stuff-heavy & $0.578$ & $-2.000$ \\
+factual & $0.000$ & $-9.449$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Late mixer identity ablation is $0\%$ (mean logprob $\approx -82$): late
+mixers are required for the head.
+That is not the same as ``memory lives in every late layer.''
+
+The L17 store is already in place by finetune step 50 (clean $0.961$,
+L17 wipe $0.352$).
+Later steps increase L17 dependence (wipe $0.352 \to 0.297$ at 800).
+We did not catch a birth.
+Pretrained AR is $0\%$, so this is a finetune algorithm, not an uncovered
+pretrained circuit.
+Scale does not unlock the synthetic bind: pretrained 370M is also $0\%$
+on the same strings.
+
+\section{Store is not readout}
+
+Residual should win at the last layer last token: that is the bus the LM
+head reads.
+
+Finetuned, query token, $\approx$40-way: L23 residual test $0.929$ versus
+best $\mathbf{h}$ $0.607$.
+Pretrained: both near chance \cite{wagh2026}.
+
+A separate AR probe set ($n=384$, seed 99, 52-way) is shown in
+Figure~\ref{fig:probes}:
+at $t=0$, nothing ($\approx 0.03$);
+at the value token, residual is $1.000$ even at L0 (the letter is on the
+bus);
+at last write, residual $0.073$ and $\mathbf{h}$ $0.104$ (no linear value
+code after the list);
+at query L23, residual $0.979$ versus $\mathbf{h}$ $0.885$ (residual is
+readout).
+
+A two-layer ReLU MLP (256-d) at last write is still chance (test
+$0.03$ to $0.06$; train $1.0$).
+Superposition / key-addressing is not a linear-probe artifact.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig4_probes_over_t.png}
+  \caption{Linear probes decode the value when the token is on the residual,
+  and again when the model has assembled an answer. After the list, neither
+  residual nor $\mathbf{h}$ carries a linear letter. Causal store is in
+  $\mathbf{h}$ anyway. $n=384$, 52-way, held-out from the main eval split.}
+  \label{fig:probes}
+\end{figure}
+
+\section{Layer-17 state is necessary}
+
+Write-zero $\mathbf{h}$ on late layers: AR $0.242$
+(CI $0.172$ to $0.320$).
+Residual-matched write noise: $0.961$ ($\Delta$LP $\approx 0$).
+Query residual noise: $0.883$ (real, small).
+Zeroing $\mathbf{B}$ and clamping $\Delta$ on write are identical to
+zeroing $\mathbf{h}$: no writes implies empty $\mathbf{h}$.
+These are one block-write condition.
+Zeroing $\mathbf{h}$ or $\mathbf{C}$ at the query, and the local-only
+run, are $0\%$ with LP $\approx -50$: readout death, not the store
+result.
+
+Mixer $\ell_2$ of the write-window state wipe versus clean is not a tiny
+budget: write mean $29.6$ (median $5.8$, p90 $85.5$); query mean $54.4$.
+Residual-matched write noise still does nothing.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig2_layer_sweep.png}
+  \caption{Zero $\mathbf{h}$ on write, one layer at a time, $n=128$ AR.
+  Only L17 collapses ($0.297$). The store is not late residual and not
+  all 24 layers.}
+  \label{fig:sweep}
+\end{figure}
+
+Almost every single-layer write-wipe stays at clean
+(Figure~\ref{fig:sweep}).
+Only L17 collapses: $0.297$ (CI $0.219$ to $0.383$).
+L16 and L18 stay clean.
+Full late-block $0.242$ is L17 plus a little extra.
+Three FT seeds: L17 wipe $0.297$ / $0.289$ / $0.320$.
+Not a one-run fluke.
+
+\section{Layer-17 $\mathbf{h}$ is sufficient; residual is not}
+
+Late wipe $0.242$; restore this sequence's L17 $\mathbf{h}$ at last write
+$\to 0.961$ (CI $0.929$ to $0.992$).
+Restore L16 $\mathbf{h}$: $0.258$; L18: $0.242$.
+Sufficiency is L17, not any other late layer.
+
+After the same late wipe, paste the actual clean L17 residual skip:
+$0.242$ at last write, $0.258$ at query.
+Residual-matched noise already missed; this is copy-the-real-vector.
+
+Restore L17 $\mathbf{h}$ at the queried value token $0.969$, last write
+$0.961$, query $0.953$.
+The bind is in L17 $\mathbf{h}$ from write through readout, not a
+last-write-only snapshot.
+
+Seed 2: wipe $0.250 \to \mathbf{h}$ restore $0.969$; residual restore
+$0.250$.
+Figure~\ref{fig:causal} summarizes.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig3_causal.png}
+  \caption{(A)~Residual-matched write noise and residual copy miss; L17
+  $\mathbf{h}$ restore does not.
+  (B)~Restore at value / last write / query all recover; neighbor layers
+  do not.
+  (C)~ATR, same checkpoint: wipe $\to 0.039$; write residual noise stays
+  near clean; L17 $\mathbf{h}$ restore on ATR-short $\to 0.945$.}
+  \label{fig:causal}
+\end{figure}
+
+\section{Swap is necessity, not copy}
+
+Swapping late $\mathbf{h}$ on write with the next example: acc $0.234$,
+donor accuracy $0.072$ (chance $\approx 0.025$).
+The intervention breaks the recipient bind; it does not transplant the
+donor value.
+This shows that $\mathbf{h}$ is required, not that $N$ is a linearly
+swappable KV slot.
+
+Key-matched patch of L17 $\mathbf{h}$ (same keys, different donor value):
+still original V $0.984$, donor V $0.000$.
+Patching donor $\mathbf{C}$ at query is the same negative.
+
+\section{ATR and conv versus state}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+ & Clean & Late $h$ wipe & Res.\ write & Local \\
+\midrule
+ATR-short & $0.961$ & $0.039$ & $0.961$ & $0.000$ \\
+ATR-mid & $0.844$ & $0.039$ & $0.836$ & $0.000$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+ATR is more state-dependent than AR.
+L17-only ATR-short wipe is $0.133$ (late-block $0.039$); L16/L18 stay
+$0.961$.
+Restore L17 $\mathbf{h}$ on ATR-short: $0.945$; residual copy $0.039$ /
+$0.062$.
+
+A local-only run is $0\%$ on AR and ATR.
+Short conv / $D$-skip is not doing these tasks after this finetune.
+That is the opposite of the pretrained-Mamba story in which AR often lives
+in the conv \cite{mecheval2025}.
+We are describing a learned state algorithm, not contradicting that
+pretrained induction can be convolutional.
+
+Multi-query AR (4 pairs, 2 queries): clean final-query $0.922$; L17
+write-wipe $0.094$.
+The second bind also lives in L17 $\mathbf{h}$.
+
+\section{Two failures: pad versus stuffing}
+
+OOD pad drops AR to $0.484$.
+Clamping $\Delta \leftarrow 0$ on filler$\cup$pad at late layers, test
+time, recovers $+0.219$ on seed 1.
+The same clamp destroys stuffing (light $0.922 \to 0.328$; heavy
+$0.578 \to 0.109$).
+Seeds 2 and 3: pad clamp helps ($+0.078$ / $+0.266$); stuffing clamp hurts.
+Sign is the result; do not lock $+0.22$ (Figure~\ref{fig:fail}).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig5_pad_vs_stuff.png}
+  \caption{$\Delta \leftarrow 0$ on junk tokens. Pad recovery is positive
+  on three seeds and seed-sensitive in size. Stuffing collapse is
+  consistent. Two failures, not one length number.}
+  \label{fig:fail}
+\end{figure}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Split & Clean & $\Delta$ pad & $\Delta$ fill. & $\Delta{=}5$ fill. \\
+\midrule
+OOD pad & $0.484$ & $0.703$ & $0.484$ & $0.484$ \\
+stuff-light & $0.922$ & $0.922$ & $0.328$ & $0.000$ \\
+stuff-heavy & $0.578$ & $0.578$ & $0.109$ & $0.000$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Pad-only versus filler-only splits the old junk clamp exactly.
+Zeroing $\mathbf{B}$ on fillers hurts; $\Delta=5$ on fillers $\to 0\%$.
+Fillers are load-bearing; pads are overwrite.
+L17 mean $\Delta$ is not a histogram smoking gun (pad $0.0049 <$ value
+$0.0070$).
+Effective rank of $\mathbf{h} \approx 1.05$ to $1.12$ on all splits;
+correct versus wrong do not separate on norm / rank / $\Delta$.
+We do not tell a rank-collapse story with these metrics.
+
+\section{Content is distributed}
+
+Single-$N$ channel wipes on L17 all stay $\approx 0.96$.
+Wiping $k=2$ or $4$ of 16 slots stays clean; $k=8$ random $0.898$,
+$k=8$ top-energy still $0.953$.
+Energy ranking does not find the bind.
+
+SVD of L17 $\mathbf{h}$ at last write: dropping the top singular value
+does nothing ($0.961$); keeping only that component dies ($0.312$).
+Rank-8 reconstruction is enough ($0.961$); dropping the top 8 singular
+values matches L17 wipe ($0.297$).
+Distributed in rank, not a 1-D code.
+
+A Hidden-Attention-style control map
+$\mathrm{mean}_E(\mathbf{h}_t \cdot \mathbf{C}_{\mathrm{query}})$ puts
+softmax mass on keys ($0.444$), not the queried value ($0.111$)
+\cite{ali2025,pitorro2025}.
+Heatmaps do not locate this store.
+Causal evidence is wipe/restore.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lc@{}}
+\toprule
+Condition & Acc. \\
+\midrule
+Swap late $h$ (donor acc.) & $0.234$ ($0.072$) \\
+Key-matched $h$: orig.\ V / donor V & $0.984$ / $0.000$ \\
+$C$@query patch: orig.\ / donor & $0.984$ / $0.000$ \\
+SVD zero-top $1/2/4/8$ & $0.961/0.914/0.672/0.297$ \\
+SVD keep-top $1/4/8$ & $0.312/0.875/0.961$ \\
+Multi-query clean $\to$ L17 wipe & $0.922 \to 0.094$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Related work}
+
+Hidden Attention reformulates the SSM as a linear token map
+\cite{ali2025}; LaTIM decomposes latent interactions \cite{pitorro2025};
+MambaLRP attributes along the scan \cite{jafari2024}.
+We use a cheap $h \cdot C$ map as a control and then intervene on
+$\mathbf{h}$.
+
+Sharma et al.\ locate and edit factual associations in Mamba
+\cite{sharma2024}.
+Ensign and Garriga-Alonso find an IOI bottleneck at L39 in pretrained
+370M \cite{ensign2024}.
+We take the lesson that one layer can be a bottleneck.
+Ours is L17 $\mathbf{h}$ on a finetuned 130M AR bind.
+Factual remains $0\%$ after AR finetune; this is not a knowledge-editing
+paper.
+
+Wagh and Singh \cite{wagh2026} is the frozen-encoder companion:
+pretrained 130M $\mathbf{h}$ is anisotropic; frozen probes collapse.
+Finetune creates a usable store that is still not a linear letter at last
+write.
+
+Stuffed Mamba and LongMamba diagnose length as state interference
+\cite{stuffed2024,longmamba2024}.
+We split pad overwrite from stuffing and do not claim a stuffing fix.
+Mechanistic eval finds pretrained Mamba often associating via short conv
+\cite{mecheval2025}.
+After AR FT, a local-only run is $0\%$ and L17 $\mathbf{h}$ wipe
+kills the task.
+
+\section{Limitations}
+
+130M; synthetic AR/ATR; task-finetuned (pretrained 130M and 370M are
+$0\%$ on these strings: scale does not unlock the bind); three FT seeds
+for L17 wipe and pad sign, one paper checkpoint for the restore suite;
+unfused sequential scan (VRAM is not the bottleneck; wall time is);
+swap, key-matched state patch, and $C$-patch do not yield a portable
+dictionary; pad recovery magnitude is seed-sensitive; stuffing has no
+mechanism-aligned fix in this paper; no SAE, no IOI, no hybrid SSM, no
+370M finetune.
+
+A main-conference claim would need a pretrained-competent natural task
+with the same L17-$\mathbf{h}$ story.
+We do not have that.
+
+\section{Conclusion}
+
+When this Mamba does associative recall, the bind is in layer-17
+recurrent state from the value token through query.
+Residual-matched interventions miss it.
+Probes at the query are readout.
+Padding overwrites the store; stuffing is something else.
+The code is distributed, not a slot you can swap.
+Residual maps and implicit-attention heatmaps are neighbors; they are not
+this result.
+
+\section*{Acknowledgments}
+This work was produced at Aquin Labs.
+Experiments were run on a single RTX 4070 Laptop (8\,GB) using the
+unfused sequential Mamba implementation.
+No fused scan kernels were used for claims.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Condition & Acc. & CI$_{95}$ & Notes \\
+\midrule
+clean & $0.961$ & $0.930$ to $0.992$ & \\
+zero $h$ write & $0.242$ & $0.172$ to $0.320$ & LP $-4.86$ \\
+swap $h$ write & $0.234$ & $0.164$ to $0.312$ & donor acc.\ $0.072$ \\
+zero $B$ / clamp $\Delta$ write & $0.242$ & same & identical to zero $h$ \\
+residual noise write & $0.961$ & $0.930$ to $0.992$ & $\Delta$LP $\approx 0$ \\
+residual noise query & $0.883$ & $0.828$ to $0.938$ & \\
+zero $h$ write early / mid & $0.906$ / $0.945$ & & \\
+zero $h$ / $C$ query; local-only & $0.000$ & $0$ to $0$ & readout death \\
+zero $h$ write L17 & $0.297$ & $0.219$ to $0.383$ & only layer that dies \\
+restore L17 $h$ @ last write & $0.961$ & $0.929$ to $0.992$ & after late wipe \\
+restore L17 residual @ last write / query & $0.242$ / $0.258$ & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.4cm}
+{\small AR causal suite, $n=128$, layers 16 to 23 unless named. Bootstrap 95\% CI.}
+
+\begin{thebibliography}{99}
+
+\bibitem{gu2023}
+Albert Gu and Tri Dao.
+Mamba: Linear-time sequence modeling with selective state spaces.
+arXiv preprint arXiv:2312.00752, 2023.
+
+\bibitem{ali2025}
+Ameen Ali, Itamar Zimerman, and Lior Wolf.
+The hidden attention of Mamba models.
+In \emph{Proceedings of the ACL}, 2025.
+
+\bibitem{pitorro2025}
+Hugo Pitorro and Marcos Treviso.
+LaTIM: Measuring latent token-to-token interactions in Mamba models.
+In \emph{Proceedings of the ACL}, 2025.
+
+\bibitem{jafari2024}
+Farnoush Rezaei Jafari et al.
+MambaLRP: Explaining selective state space sequence models.
+In \emph{Advances in Neural Information Processing Systems}, 2024.
+
+\bibitem{sharma2024}
+Arnab Sen Sharma, David Atkinson, and David Bau.
+Locating and editing factual associations in Mamba.
+arXiv preprint arXiv:2404.03646, 2024.
+
+\bibitem{ensign2024}
+Danielle Ensign and Adri{\`a} Garriga-Alonso.
+Investigating the indirect object identification circuit in Mamba.
+arXiv preprint arXiv:2407.14008, 2024.
+
+\bibitem{wagh2026}
+Bhagyashree Wagh and Akash Singh.
+Lost in state space: Probing frozen Mamba representations.
+arXiv preprint arXiv:2605.00253, 2026.
+
+\bibitem{stuffed2024}
+Stuffed Mamba: Oversized states lead to the inability to forget.
+arXiv preprint arXiv:2410.07145, 2024.
+
+\bibitem{longmamba2024}
+LongMamba: Enhancing Mamba's long-context capabilities via training-free
+receptive field enlargement, 2024.
+
+\bibitem{mecheval2025}
+Mechanistic evaluation of Transformers and state space models.
+arXiv preprint arXiv:2505.15105, 2025.
+
+\end{thebibliography}
+
+\end{document}

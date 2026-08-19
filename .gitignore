@@ -23,16 +23,21 @@ data/**
 !data/splits/**/*.jsonl
 !data/splits/**/*.md
 !data/splits/**/SHA256SUMS.txt
-figs/**
-!figs/.gitkeep
-!figs/*.png
-!figs/*.pdf
 runs/
 !runs/.gitkeep
 vendor/
-paper/
 
 *.npy
 *.npz
 *.pt
 .ipynb_checkpoints/
+paper/*.aux
+paper/*.out
+paper/*.toc
+paper/*.synctex.gz
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/main.pdf

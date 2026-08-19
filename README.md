@@ -4,9 +4,9 @@ When AR-finetuned Mamba-130M does associative recall, the bind lives in **layer-
 
 This repo is the workshop paper, frozen eval splits, intervention hooks, and locked experiment receipts.
 
-- Draft: [`paper/draft.md`](paper/draft.md)
+- Draft: [`paper/main.tex`](paper/main.tex)
 - Numbers: [`logs/findings.md`](logs/findings.md)
-- Figures: [`figs/`](figs/) (`python scripts/make_figs.py`)
+- Figures: [`paper/figures/`](paper/figures/) (`python scripts/make_figs.py`)
 
 Pretrained 130M and 370M score 0% on these splits. The store is a **task-finetune algorithm**, not a pretrained circuit. Venue default: workshop.
 
@@ -111,9 +111,8 @@ New experiment: new log filename. Never overwrite `logs/intervene_ar.md`, `failu
 
 | Path | Purpose |
 |---|---|
-| `paper/draft.md` | Workshop draft |
-| `paper/RELEASE.md` | Tag and what is not in git |
-| `figs/` | Five paper figures |
+| `paper/main.tex` | Workshop draft |
+| `paper/figures/` | Paper figures |
 | `logs/findings.md` | Durable numbers |
 | `logs/LOCK.md` | SHA256 of locked logs and splits |
 | `data/splits/v1/` | Frozen eval |
